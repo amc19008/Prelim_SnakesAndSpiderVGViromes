@@ -1,0 +1,374 @@
+##I began creating a pipeline for pulling raw VG transcrriptome reads from NCBI, QC, and assembly
+
+#First I need a conda env with bbmap, FastP, SPAdes, megahit
+conda create -n PullAss #creation of environment for pulling/assembling
+
+conda activate PullAss
+
+conda install -c conda-forge -c bioconda bbmap #used to also install fastp, megahit, and spades, by subbing out "bbmap" part
+
+#Now we can try running it on Wednesday, I named it PullAssInator.sh
+#29-10: We can try running now
+
+conda activate PullAss
+bash PullAssInator.sh #Began @ 2:12pm
+
+#03-10: Back to project work let's check our output from last week's trial of new PullAss script
+#Spades dir log file reveals: K values to be used: [21, 33, 55, 127]
+#Assembly time: K21-14m, K33-17m, K55-34m, Stopped at some point during K127 
+#Following notices printed:  Assembled contigs are in /mnt/colston/BIOL_Venom_Project/SRR10216523_spades/contigs.fasta
+ #* Assembly graph is in /mnt/colston/BIOL_Venom_Project/SRR10216523_spades/assembly_graph.fastg
+ #* Assembly graph in GFA format is in /mnt/colston/BIOL_Venom_Project/SRR10216523_spades/assembly_graph_with_scaffolds.gfa
+
+#04-11:
+ mkdir SnakesNspides #copy over lists and PullAssInator
+
+ screen -S PullAssFirstRun
+conda activate PullAss
+bash PullAssInator.sh
+ Ctrl + A, then D
+screen -r PullAssFirstRun #to pull this screen back up 
+
+#05-11: Today I checked on the run-- still going strong! 8/20 assembled! Checking back a few hours later: 10/20
+#06-11: 17/20 assembled
+#Next step: GenomeMAD for first pass annotation
+
+#upon checking run today I realized that it was done, but 3 failed:
+# SRR10216522 failed download (ᵕ—^—)
+# SRR17250293 failed download (ᵕ—^—)
+# SRR11833482 failed download (ᵕ—^—)
+
+/work/programs/sratoolkit.3.0.10-centos_linux64/bin/fasterq-dump -p -e 4 --concatenate-reads SRR10216522
+#worked
+fastp -i SRR10216522.fastq --interleaved_in -o "SRR10216522_1_cln.fastq" -O "SRR10216522_2_cln.fastq" --average_qual 25 -q 20 -l 50 -y -Y 30 -g -x -n 2 -c --overrepresentation_analysis --html .fastp.html --json .fastp.json --thread 2
+#worked
+bbnorm.sh in1="SRR10216522_1_cln.fastq" in2="SRR10216522_2_cln.fastq" out1="SRR10216522.norm.R1.fq.gz" out2="SRR10216522.norm.R2.fq.gz" target=100 min=1 threads=2 -eoom
+
+spades.py --rnaviral -1 "SRR10216522.norm.R1.fq.gz" -2 "SRR10216522.norm.R2.fq.gz" -t 2 -m 300 -o "SRR10216522_spades"
+tar -czvf "SRR10216522_spades.tar.gz" "SRR10216522_spades"
+rm -r SRR10216522_spades
+
+#11-10: Today let's recover the last two 
+screen -S PullAssrecoveryRun
+conda activate PullAss
+bash PullAssInator.sh
+ctrl+A, D
+screen -r PullAssrecoveryRun
+
+#12-11: Today I decided to add genomes to my dataset, as well. Two species for each: One venomous, and one nonvenomous.
+screen -r LatestPullAss #running on 10 threads
+#I had to modify spades to run with --rna 
+  #NOTE from the future (21-03-26 post project): Genomes took too long to assemble on the server and that aspect of the project was scrapped for time
+
+#Making some trial files for testing Maddinator script:
+snsSRAsTrial.csv contains:      and the meta file, SRAsTrial.csv, contains these and a column stating if RNA/DNA
+        SRR10216514
+        SRR10216522
+
+        screen -S TestMad
+
+        #Running Kraken2 on SRR10216514_spades/transcripts.fasta く⁠コ⁠:⁠彡
+
+grep "virus" SRR10216514_transcripts_taxonomy.tsv
+        genomad end-to-end --cleanup SRR10216514_transcripts.fasta ./GeNomad/SRR10216514_output /work/databases/genomad_db --threads 4
+
+#output od running in coomand line
+Executing genomad summary.                                                                                  
+[18:59:06] Creating the GeNomad/SRR10216514_output/SRR10216514_transcripts_summary directory.                          
+[18:59:06] Using scores from aggregated-classification.                                                                
+[18:59:07] 1 plasmid(s) and 12 virus(es) were identified.                                                              
+[18:59:08] Nucleotide sequences were written to SRR10216514_transcripts_plasmid.fna and                                
+           SRR10216514_transcripts_virus.fna.                                                                          
+[18:59:08] Protein sequences were written to SRR10216514_transcripts_plasmid_proteins.faa and                          
+           SRR10216514_transcripts_virus_proteins.faa.                                                                 
+[18:59:08] Gene annotation data was written to SRR10216514_transcripts_plasmid_genes.tsv and                           
+           SRR10216514_transcripts_virus_genes.tsv.                                                                    
+[18:59:08] Summary files were written to SRR10216514_transcripts_plasmid_summary.tsv and                               
+           SRR10216514_transcripts_virus_summary.tsv.                                                                  
+[18:59:08] geNomad summary finished!                      
+
+#19-11:
+screen -S testMAD
+#Same number of microbes in first sample using new script w/o Kraken2, and the second (SRR10216522) yeilding:
+ 0 plasmid(s) and 5 virus(es) were identified.  
+
+screen -S GenomeGeNomad #activates screen, you can name it whatever
+conda activate genomad #activate the env
+ genomad end-to-end --cleanup GCA_044335425.1_ASM4433542v1_genomic.fna.gz ./GeNomad/GCA_044335425_1_output /work/databases/genomad_db --threads 4
+ #Output ends with summary including a line such as: 51 plasmid(s) and 789 virus(es) were identified.
+Hit ctrl+A, then D to exit screen and let run. 
+screen -r GenomeGeNomad #Returns you to screen. type exit to kill screen. 
+
+#Today I'm going to try to see what went wrong
+tar -xzvf SRR12915640_spades.tar.gz
+
+/work/programs/sratoolkit.3.0.10-centos_linux64/bin/fasterq-dump -p -e 2 --concatenate-reads SRR12915640
+fastp -i SRR12915640.fastq --interleaved_in -o SRR12915640_1_cln.fastq -O SRR12915640_2_cln.fastq --average_qual 25 -q 20 -l 50 -y -Y 30 -g -x -n 2 -c --overrepresentation_analysis --html .fastp.html --json .fastp.json --thread 2 
+bbnorm.sh in1=SRR12915640_1_cln.fastq in2=SRR12915640_2_cln.fastq out1=SRR12915640.norm.R1.fq.gz out2=SRR12915640.norm.R2.fq.gz target=100 min=1 threads=2 -eoom
+
+screen -S PullOne
+conda activate PullAss
+spades.py --rna -1 SRR12915640.norm.R1.fq.gz -2 SRR12915640.norm.R2.fq.gz -t 4 -m 250 -o SRR12915640_spades
+#Let's see how that goes. No success. Unclear what the issue is. Maybe if I split instead of concat at first step
+
+/work/programs/sratoolkit.3.0.10-centos_linux64/bin/fasterq-dump -p -e 2 --split-files SRR12915640
+fastp -i SRR12915640_1.fastq -I SRR12915640_2.fastq -o SRR12915640_1_cln.fastq -O SRR12915640_2_cln.fastq --average_qual 25 -q 20 -l 50 -y -Y 30 -g -x -n 2 -c --overrepresentation_analysis --html SRR12915640.fastp.html --json SRR12915640.fastp.json --thread 2
+bbnorm.sh in1=SRR12915640_1_cln.fastq in2=SRR12915640_2_cln.fastq out1=SRR12915640.norm.R1.fq.gz out2=SRR12915640.norm.R2.fq.gz target=100 min=1 threads=2 -eoom
+screen -S PullOne
+conda activate PullAss
+spades.py --rna -1 SRR12915640.norm.R1.fq.gz -2 SRR12915640.norm.R2.fq.gz -t 4 -m 250 -o SRR12915640_spades
+#This worked! I guess for the samples I flagged that didn't work it was because the F and R files were reversed or something!
+
+tar -czvf SRR12915640_spades.tar.gz SRR12915640_spades
+
+Next I modified PullAssInator. Called: IsolatePull.sh
+screen -S PullIso
+
+conda activate PullAss
+bash IsolatePull.sh
+
+All I did was give it line 262 which has the --split-files flag instead of the concatenate one.
+ls ./*.gz | wc -l #outtput: 18, this makes some sense, as the genome files are also Gzipped
+
+SRR30715312 failed download (ᵕ—^—)
+#Which is weird... I think I may have to change more in the script. 
+#Simplified script and redid it to same name (Iso..)
+#It worked!
+  
+#25-11: Today I will be running genomad on all the assembled files
+        #I messed up and deleted other accessions from the metadata and SRA files
+nano SnakeNspiderSRAs.csv #also modify snsSRAs.csv
+screen -S MaddAll
+conda activate genomad
+bash Maddinator2000.sh
+        Done at some hour-- now 9pm
+#26-11: let's do some cleaning
+        rm ./*.fasta
+        ls ./*_spades
+                SRR10216514     1 plasmid(s) and 14 virus(es) were identified.
+                SRR10216522     0 plasmid(s) and 5 virus(es) were identified.
+                SRR10216523     1 plasmid(s) and 14 virus(es) were identified.
+                SRR11833482     5 plasmid(s) and 87 virus(es) were identified. 
+                SRR12882912     0 plasmid(s) and 19 virus(es) were identified. 
+                SRR12915640     2 plasmid(s) and 95 virus(es) were identified. 
+                SRR12915695     0 plasmid(s) and 3 virus(es) were identified. 
+                SRR14533285     0 plasmid(s) and 3 virus(es) were identified. 
+                SRR17250293     0 plasmid(s) and 17 virus(es) were identified.
+                SRR17283879     0 plasmid(s) and 40 virus(es) were identified. 
+                SRR21096585     0 plasmid(s) and 22 virus(es) were identified. 
+                SRR23348480     0 plasmid(s) and 5 virus(es) were identified. 
+                SRR23434845     17 plasmid(s) and 141 virus(es) were identified.  
+                SRR30050266     0 plasmid(s) and 37 virus(es) were identified. 
+                SRR30715312     9 plasmid(s) and 177 virus(es) were identified.
+                SRR30715313     0 plasmid(s) and 20 virus(es) were identified.
+                SRR3141929      0 plasmid(s) and 1 virus(es) were identified. 
+                SRR6051180      5 plasmid(s) and 92 virus(es) were identified. 
+                SRR6051182      0 plasmid(s) and 0 virus(es) were identified.**
+                SRR7609626      0 plasmid(s) and 1 virus(es) were identified.
+        rm -r ./*_spades
+        cd GeNomad
+        ls ./*_output/*_transcripts_summary #everything looks pretty good
+#Next I want to run genomad on the genomes just to see what we find
+gzip ./*.fna #gunzip all genomes
+
+screen -S GenomeGeNomad #aborted 1-12, stuck at annotating using Aragorn for probably over a week.
+conda activate genomad
+ genomad end-to-end --cleanup GCA_038502835.1_IOZ_Osin_1.0_genomic.fna.gz ./GeNomad/GCA_038502835_1_IOZ_output /work/databases/genomad_db --threads 4
+        Result: 
+ #Repeat for following:
+         GCA_043090695.1_ASM4309069v1_genomic.fna.gz    25 plasmid(s) and 800 virus(es) were identified.
+         GCA_046270485.1_ASM4627048v1_genomic.fna.gz    31 plasmid(s) and 423 virus(es) were identified.
+         GCF_010614865.2_ASM1061486v2_genomic.fna.gz    432 plasmid(s) and 30 virus(es) were identified.
+screen -r Genome2
+genomad end-to-end --cleanup GCF_010614865.2_ASM1061486v2_genomic.fna.gz ./GeNomad/GCF_010614865_2_ASM1_output /work/databases/genomad_db --threads 4
+
+#Next I must extract all viral seq and use checkV
+#Let's make a script for that:
+
+#!/bin/bash
+
+sralist="snsSRAsTrial.csv" #File with SRA #s on their own 
+
+if [[ $(ls | grep -xc "$sralist") -eq 1 ]]; then echo "Rad, the sra's present."; else echo "Radn't, SRA list not found in current wd. ):"; exit 1; fi
+  
+# Starting big loop
+echo "Alright, file present. Let's get it started in here."
+for x in $(cat $sralist)
+do      echo "LOOP STARTING ----------------------------------------------------------------------------------------------------------------------------------------------------------"
+        echo "Starting checkv for $x at $(date)" 
+        #pwd /mnt/colston/BIOL_Venom_Project/SnakesNspides/GeNomad/${x}_output/${x}_transcripts_summary/${x}_transcripts_virus.fna
+        export CHECKVDB=/work/databases/checkv-db-v1.5/
+        checkv end_to_end /mnt/colston/BIOL_Venom_Project/SnakesNspides/GeNomad/${x}_output/${x}_transcripts_summary/${x}_transcripts_virus.fna ./${x}_checkv_output -t 10
+        echo "Finished $x at $(date)"
+done < "$sralist"
+#The above was the first draft for the loop I made for checkv, but I ended up making modifications resulting in final file called "checkVit.sh"
+
+screen -r CheckPlease
+        #it seems most worked except SRR6051182_checkv_output
+        checkv end_to_end /mnt/colston/BIOL_Venom_Project/SnakesNspides/GeNomad/SRR6051182_output/SRR6051182_transcripts_summary/SRR6051182_transcripts_virus.fna ./SRR6051182_checkv_output -d /work/databases/checkv-db-v1.5/ -t 10
+        #didn't work bc fasta empty-- recall: 0 plasmid(s) and 0 virus(es) were identified.**
+mv ./*_checkv_output CheckV/
+
+#!/bin/bash
+
+sralist="snsSRAsTrial.csv" #File with SRA #s on their own 
+
+if [[ $(ls | grep -xc "$sralist") -eq 1 ]]; then echo "Rad, the sra's present."; else echo "Radn't, SRA list not found in current wd. ):"; exit 1; fi
+  
+# Starting big loop
+echo "Alright, file present. Let's get it started in here."
+for x in $(cat $sralist)
+do      echo "LOOP STARTING ----------------------------------------------------------------------------------------------------------------------------------------------------------"
+        echo "Starting checkv for $x at $(date)" 
+        #pwd /mnt/colston/BIOL_Venom_Project/SnakesNspides/GeNomad/${x}_output/${x}_transcripts_summary/${x}_transcripts_virus.fna
+        pharokka.py -i /mnt/colston/BIOL_Venom_Project/SnakesNspides/GeNomad/${x}_output/${x}_transcripts_summary/${x}_transcripts_virus.fna -o ./${x}_pharokka_output -d /work/databases/pharo -t 10
+        echo "Finished $x at $(date)"
+done < "$sralist"
+
+screen -S PHA
+conda activate pharokka
+bash pharokkaTime.sh
+
+mkdir Venom_genes
+nano spiders_all_dna.fa #from arachnoserver
+#gotta move all fastas into there too 
+#I also moved all my snakes into a snake dir, and seperated them by family (mostly), since the databases are Viperidae and Elapidae
+
+1-12: #Today I am going to pull those venoms using BLAST and venom gene dbs (ToxCodAn and ArachnoServer)
+        #I gotta import the scripts I previously made and adapt them for our purposes:
+BLASTI_tblastn_Scorpiones_db_array.sh #Let's rename: BLASTI_Snakes_Viperids.sh
+        #had to modify it into "For" loop format, as it was a slurm-based one before 
+        for input in "${lst[@]}"; do #replaces the Slurm line
+
+BLASTII_py_for_all.sh
+        Requires Column1.txt (contains column 1 of output from part 1) and new_list.txt (contains names)
+                #!/bin/bash
+
+                for file in /core/globus/cgi/RAMP/gene_fam/testing_dir/H_arizonensis_telson_centroids.fasta.tblastn.Scorpiones_db.out; do
+                        # Extract the first column and save it with the new filename
+                        awk '{print $1}' "$file" > "H_arizonensis_telson_centroids-blastx.Scorpiones_db_Column1.txt"
+                done
+screen -S ViperPull
+conda activate blast
+bash BLASTI_Snakes_Viperids.sh
+
+screen -S ElapPull #activate envs
+bash BLASTI_Snakes_Elapids.sh #Done pretty quickly
+
+#I am not entirely sure if this is working...
+SRR12915695_transcripts.fasta #There is something wrong with this fasta file jfc
+        #I figured it out! the fasta has no sequences for some reason??? remedied this
+
+screen -S ArachnoPull #activate envs
+bash BLASTI_Spiders.sh
+
+tblastx -db /mnt/colston/BIOL_Venom_Project/SnakesNspides/Venom_genes/Snakes/Viperids/Viperidae_db -evalue 1e-20 -outfmt "6 qseqid sseqid pident length evalue mismatch gapopen qstart qend sstart send qlen slen" -query SRR12915695_transcripts.fasta -max_target_seqs 1 -num_threads 1 -out SRR12915695_transcripts.tblastx.Viperidae_db.out
+ 
+#I'll run all other snakes on both scripts, too
+screen -S Others #conda activate
+bash BLASTI_Snakes_Elapids.sh #here I've given it the Snake dir for fastas
+bash BLASTI_Snakes_Viperids.sh
+
+#It's sus that SRR6051182 has no plasmids or viruses, let's run alone in a new screen 
+screen -S Single #activate envs
+genomad end-to-end --cleanup SRR6051182_transcripts.fasta "./GeNomad/SRR6051182_output" /work/databases/genomad_db --threads 2
+        #confirmed 0 plasmids, 0 viruses detected....
+
+#drafts by Friday for comments on presentations next Monday
+
+#04-12: I have to do stuff before visualizing, including pulling the raw seq again sighhhh
+#pull.sh
+
+#!/bin/bash
+sralist="snsSRAs.csv" #File with SRA #s on their own
+for x in $(cat $sralist)
+do      echo "LOOP STARTING ----------------------------------------------------------------------------------------------------------------------------------------------------------"
+        echo "Starting the download for $x at $(date)"
+        /work/programs/sratoolkit.3.0.10-centos_linux64/bin/fasterq-dump -p -e 4 $x
+done
+
+screen -S PullOnly
+conda activate PullAss
+bash pull.sh #two are not paired. Why?
+        SRR3141929.fastq
+                /work/programs/sratoolkit.3.0.10-centos_linux64/bin/fasterq-dump --split-files -p -e 4 SRR3141929
+        #Did not work. Replacing with SRR25747561- Brown Vine Snake-- Worked! Now I have to repeat all the steps for it tho...
+        SRR7609626.fastq
+                /work/programs/sratoolkit.3.0.10-centos_linux64/bin/fasterq-dump --split-files -p -e 4 SRR7609626
+        #Worked
+                /work/programs/sratoolkit.3.0.10-centos_linux64/bin/fasterq-dump --concatenate-reads -p -e 4 SRR25747561
+#After this, I may want to make a loop that creates the bam we need... Or process all 20 samples individually. 
+screen -S bowtie2
+conda activate mapback
+#index.sh
+#!/bin/bash 
+sralist="snsSRAs.csv" #File with SRA #s on their own
+
+for x in $(cat $sralist)
+do      echo "LOOP STARTING ----------------------------------------------------------------------------------------------------------------------------------------------------------"
+        echo "Starting viral contig pull $x at $(date)"
+        cp /mnt/colston/BIOL_Venom_Project/SnakesNspides/GeNomad/${x}_output/${x}_transcripts_summary/${x}_transcripts_virus.fna .
+        bowtie2-build ${x}_transcripts_virus.fna ${x}_virus_index
+        rm ${x}_transcripts_virus.fna
+done
+
+mkdir Mapping
+mv ./*_index* Mapping/
+
+#6-12: Today I gotta recover the new SRA data and try to catch up with the other stuff, which has alr been databased afaik
+screen -S recover #We'll deal with SRR25747561 here SRR25747561.fastq
+conda activate PullAss
+        fastp -i SRR25747561_1.fastq -I SRR25747561_2.fastq -o SRR25747561_1_cln.fastq -O SRR25747561_2_cln.fastq --average_qual 25 -q 20 -l 50 -y -Y 30 -g -x -n 2 -c --overrepresentation_analysis --html SRR25747561.fastp.html --json SRR25747561.fastp.json --thread 2
+        bbnorm.sh in1=SRR25747561_1_cln.fastq in2=SRR25747561_2_cln.fastq out1=SRR25747561.norm.R1.fq.gz out2=SRR25747561.norm.R2.fq.gz target=100 min=1 threads=2 -eoom
+        rm SRR25747561_1_cln.fastq
+        rm SRR25747561_2_cln.fastq
+        spades.py --rna -1 SRR25747561.norm.R1.fq.gz -2 SRR25747561.norm.R2.fq.gz -t 4 -m 250 -o SRR25747561_spades
+        rm SRR25747561.norm.R1.fq.gz
+        rm SRR25747561.norm.R2.fq.gz
+        mv SRR25747561_spades/transcripts.fasta SRR25747561_transcripts.fasta
+        conda deactivate #activate genomad
+        genomad end-to-end --cleanup SRR25747561_transcripts.fasta ./GeNomad/SRR25747561_output /work/databases/genomad_db --threads 2
+
+mv ./*.fastq Mapping/ 
+cp snsSRAs.csv Mapping/ #edited it also to replace SRR3141929 with SRR25747561
+
+#GeNomad running on SRR25747561, needs indexing and mapping 
+cp /mnt/colston/BIOL_Venom_Project/SnakesNspides/GeNomad/SRR25747561_output/SRR25747561_transcripts_summary/SRR25747561_transcripts_virus.fna .
+bowtie2-build SRR25747561_transcripts_virus.fna SRR25747561_virus_index
+rm SRR25747561_transcripts_virus.fna
+mv ./*_index* Mapping/ #then cd in
+conda deactivate
+conda activate mapback
+
+#mapinator.sh
+#!/bin/bash 
+sralist="snsSRAs.csv" #File with SRA #s on their own
+
+for x in $(cat $sralist)
+do      echo "LOOP STARTING ----------------------------------------------------------------------------------------------------------------------------------------------------------"
+        echo "Commencing mapping $x at $(date)"
+        bowtie2 -x ${x}_virus_index -1 ${x}_1.fastq -2 ${x}_2.fastq | samtools view -bS - | samtools sort -o ${x}_sample_vs_virus.bam --threads 5
+done
+
+/mnt/colston/BIOL_Venom_Project/SnakesNspides/GeNomad/SRR10216514_output/SRR10216514_transcripts_summary
+cut -f11 SRR10216514_transcripts_virus_summary.tsv | sort | uniq -c | sort -nr #for top hits
+
+cd /mnt/colston/BIOL_Venom_Project/SnakesNspides/GeNomad/SRR17283879_output/SRR17283879_transcripts_summary
+cut -f11 SRR17283879_transcripts_virus_summary.tsv | sort | uniq -c | sort -nr #for top hits
+
+screen -S Tar
+tar -I zstd -cf mydir.tar.zst Mapping/ #condensing dir for import, but it's taking way too long idk
+
+#I wanted to sort the viromes, so I took the columns with top viral hits and made files with each (snakes, spiders)
+tr ',' '\n' < snake_viromes.txt | sed 's/^ *//; s/ *$//'| grep -E '^[0-9]+' | awk '
+      {
+        count=$1
+        $1=""; tax=substr($0,2)
+        sum[tax]+=count
+      }
+      END {
+        for(t in sum) printf "%d\t%s\n", sum[t], t
+      }
+    ' | sort -nr > unique_sorted_counts2.tsv
+
+chmod -R 755 /mnt/colston/BIOL_Venom_Project/SnakesNspides/mydir.tar.zst
