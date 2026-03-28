@@ -35,3 +35,5 @@ Activate the environment:
 Bash 
 
     bash PullAssInator.sh 
+
+### Next step: GenomeMAD for first pass annotation
