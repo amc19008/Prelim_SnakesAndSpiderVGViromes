@@ -37,3 +37,27 @@ Bash
     bash PullAssInator.sh 
 
 ### Next step: GenomeMAD for first pass annotation
+
+.
+
+    conda activate genomad
+Run the Maddinator2000:
+
+    bash Maddinator2000.sh
+Let's do some cleaning
+
+    rm ./*.fasta
+    ls ./*_spades
+    rm -r ./*_spades
+Let's check the out dir:
+
+    cd GeNomad
+    ls ./*_output/*_transcripts_summary 
+### Next I must extract all viral seq and use checkV
+Let's activate a screen:
+
+    screen -r CheckPlease
+And Bash:
+
+    bash checkVit.sh
+
