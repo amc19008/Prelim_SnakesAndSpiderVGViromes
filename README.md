@@ -10,7 +10,7 @@ This is the repository for the scripts I used during a Fall 2025 project on snak
 .
 
     conda install -c conda-forge -c bioconda bbmap 
-used to also install fastp, megahit, and spades, by subbing out "bbmap" part
+used to also install fastp, megahit, sra-tools, and spades, by subbing out "bbmap" part
 
 ### Next you need to create the list and metadata files to inform our bash script:
 sralist="snsSRAs.csv" #File with SRA #s on their own. Should look like: 
