@@ -37,6 +37,8 @@ Bash
 
     bash PullAssInator.sh 
 
+At some point I also tried to download in some raw files for genome assembly, as well as assembled genomes after that took too long. Eventually the genome aspect was dropped altogether in the interest of time (This was a semester project, initially).
+
 ### Next step: GenomeMAD for first pass annotation
 
 .
@@ -61,4 +63,59 @@ Let's activate a screen:
 And Bash:
 
     bash checkVit.sh
+Note: It is at this point that I became unsure of the next steps for the process, and I am unsure how far I got but the following was planned (if not executed): 
+
+    screen -S PHA
+*
+
+        conda activate pharokka
+*
+
+        bash pharokkaTime.sh
+
+### Here's where I really started to get confused:
+I have to do stuff before visualizing, including pulling the raw seq again 
+
+    screen -S PullOnly
+*
+
+        conda activate PullAss
+*
+
+        bash pull.sh 
+Two are not paired. Why? I tried to investigate this:
+
+    SRR3141929
+        #Did not work. Replacing with SRR25747561- Brown Vine Snake-- Worked! Now I have to repeat all the steps for it tho...
+        SRR7609626.fastq
+                /work/programs/sratoolkit.3.0.10-centos_linux64/bin/fasterq-dump --split-files -p -e 4 SRR7609626
+        #Worked
+I wrote the following next: 
+After this, I may want to make a loop that creates the bam we need... Or process all 20 samples individually. 
+
+    screen -S bowtie2
+*
+
+        conda activate mapback
+*
+
+        bash index.sh
+I'm not certain if index.sh and mapinator.sh are the same yet. Needs further verification
+
+        mkdir Mapping
+*
+
+        mv ./*_index* Mapping/
+I wanted to sort the viromes, so I took the columns with top viral hits and made files with each (snakes, spiders) using the following: 
+
+    tr ',' '\n' < snake_viromes.txt | sed 's/^ *//; s/ *$//'| grep -E '^[0-9]+' | awk '
+      {
+        count=$1
+        $1=""; tax=substr($0,2)
+        sum[tax]+=count
+      }
+      END {
+        for(t in sum) printf "%d\t%s\n", sum[t], t
+      }
+    ' | sort -nr > unique_sorted_counts2.tsv
 
