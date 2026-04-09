@@ -1,0 +1,405 @@
+##Several months have passed, so I started retracing my steps, then ultimately copied everything over as a replica
+##After this, I decided to try to recover the tetragnatha that had no viral hits. here are my latest notes (ongoing):
+
+#Today I am investigating my old work and trying to replicate it 
+
+#starting on the server at /mnt/colston/BIOL_Venom_Project/SnakesNspides/
+
+#Let's add these to a new dir called: genomes_test
+    curl_genomes.sh
+    -rwxrwxrwx 1 root root 487M Nov 20 11:42 GCA_046270485.1_ASM4627048v1_genomic.fna.gz
+    -rwxrwxrwx 1 root root 463M Nov 22 00:26 GCA_043090695.1_ASM4309069v1_genomic.fna.gz
+    -rwxrwxrwx 1 root root 812M Nov 22 12:08 GCF_010614865.2_ASM1061486v2_genomic.fna.gz
+    -rwxrwxrwx 1 root root 423M Nov 22 12:12 GCA_038502835.1_IOZ_Osin_1.0_genomic.fna.gz
+
+mv curl_genomes.sh genomes_test/
+
+#I decided to rename the PullAss environment to PulAs as I recreated it locally, so that it would be less crass for future work
+
+conda create -n Pulas
+
+conda activate PulAs
+
+conda install -c conda-forge -c  bioconda bbmap #and all the others
+
+#I had to change the script for pullassinator, so I took the time to also rename it and kept the old as OG
+    #New: PulAsInator.sh
+#I'm bashing it now apr 1- in a screen called Pull
+    #Very afraid for my laptop lol hopefully it can handle it
+
+    SRR10216522 failed download
+
+#I checked on it on and off and noticed some failed like the above, but also many worked:
+
+SRR10216514_spades.tar.gz
+SRR10216523_spades.tar.gz
+SRR14533285_spades.tar.gz
+SRR23434845_spades.tar.gz
+SRR6051180_spades.tar.gz
+SRR6051182_spades.tar.gz
+
+#Then I stopped it because I think I was running into space issues with the latest ones
+
+#It's the next day (2-4):
+#Today I will find the lab server and try to run all my shit there 
+ssh maddlab_apollo365@136.145.140.141 
+    #PW b365 , cd users/
+    #Worked with my own hotspot at Cabra Tosta
+#New dir:
+    /Users/maddlab_apollo365/asherc
+
+#Now I am repeating yesterday's steps in a dir called Prelim_Data_SNS
+    #Boom so now that's running in a screen on the server called Pull
+
+#!/bin/bash
+
+#rough pipeline for dinornav and coral reef metaanalysis -- AS OF 2/4/2024 YOU NEED TO ACTIVATE THE "bigtime" CONDA ENVIRONMENT TO RUN
+#threads set to 10 for now
+
+# creating and assigning variables
+sralist="snsSRAs.csv" #File with SRA #s on their own
+meta="SnakeNspiderSRAs.csv" #File with metadata: SRA#,RNA/DNA,single/paired,Illumina/Pacbio
+#checking to make sure the file you said above is available in the current working directory
+if [[ $(ls | grep -xc "$sralist") -eq 1 ]]; 
+then echo "Rad, the sra's present."; 
+else echo "Radn't, SRA list not found in current wd. ):"; exit 1; 
+fi
+
+# Starting big loop
+echo "Alright, file present. Let's get it started in here."
+for x in $(cat $sralist)
+do      echo "LOOP STARTING ----------------------------------------------------------------------------------------------------------------------------------------------------------"
+        echo "Starting the download for $x at $(date)"
+        export TMPDIR=/Users/maddlab_apollo365/Asherc/Prelim_Data_SNS/temp
+        prefetch $x
+        fasterq-dump -p -e 10 --concatenate-reads  $x
+        echo "Finished the download for $x at $(date). Confirming download....."
+        #confirming the the files were downloaded succesfully
+        if [[ $(ls | grep -xc ""$x".fastq") -eq 1 ]]; 
+        then    echo "ALRIGHT FILES ARE THERE AND WE'LL MOVE FORWARD (˶ᵔ ᵕ ᵔ˶) ++++++++++++++++++___++++++++++++++++++++____+++++++++++++++++++++++++++++++++++___++++++++++++++++++++____+++++++++++++++++"
+                #Ok now that we have files downloaded and confirmed they are there, need to clean with fastp
+                R12=$(ls | grep "$x" | grep "fastq") #here R12 is the output, or fastq file pulled from previous step
+                echo "Cleaning raw reads...₊˚⊹♡"
+                if [[ $(grep -w "$x" $meta | awk -F "," '{print $3}') == "single" ]]; #this checks third column of meta file for single or paired reads
+                then    echo "single"
+                        fastp -i $R12 -o "$x"_cln.fastq --average_qual 25 -q 20 -l 50 -y -Y 30 -g -x -n 2 -c --overrepresentation_analysis --html .fastp.html --json .fastp.json --thread 10 
+                        ck=""$x"_cln.fastq" #Sets ck as the output of this fastp step for next step
+                else    echo "paired"
+                        fastp -i $R12 --interleaved_in -o "$x"_1_cln.fastq -O "$x"_2_cln.fastq --average_qual 25 -q 20 -l 50 -y -Y 30 -g -x -n 2 -c --overrepresentation_analysis --html .fastp.html --json .fastp.json --thread 10
+                        ck=""$x"_1_cln.fastq" #Sets ck as the output of this fastp step for next step
+                fi
+                echo "FastP seems to be done, lets clean up a bit...(*ᴗ͈ˬᴗ͈)"
+                #alright, raw reads cleaned, no need for them anymore can get them anytime we need from SRA. To save space I will remove before normalizing.
+                rm $R12
+                echo "before moving on, let's make sure there are enough reads in the cleaned file ꕤ*.ﾟ"
+                if [ $( wc -l $ck | awk '{print $1}') -eq 0 ]; #here we are checking first column of the fastp output
+                then    echo ""$x" has failed QC (ᵕ—^—)"
+                        echo "$x" >> FailedQC.list
+			rm "$x"*cln.fastq & #This deletes the fastp output for the one that failed
+		else	echo "Alright, time for normilization, dont matter if single or paired, bbnorm gone do it...⋆˙⟡"
+                        if [[ $(grep -w "$x" $meta | awk -F "," '{print $3}') == "single" ]]; 
+                        then    echo "single"
+                                bbnorm.sh in="$x"_cln.fastq out="$x".norm.fq.gz  target=100 min=1 threads=10 -eoom
+                        else    echo "paired"
+                                bbnorm.sh in1="$x"_1_cln.fastq in2="$x"_2_cln.fastq out1="$x".norm.R1.fq.gz out2="$x".norm.R2.fq.gz target=100 min=1 threads=10 -eoom
+                        fi
+                        echo "Normalization seems to be done, lets clean up a bit...(*ᴗ͈ˬᴗ͈)"
+                        #alright, to save space we will remove the non-normed reads before assembly.
+                        rm "$x"*cln.fastq &
+        #(WE CAN ADD SOMETHING HERE TO CHECK FOR DNA or RNA to run different programs)
+                        if [[ $(grep -w "$x" $meta | awk -F "," '{print $2}') == "RNA" ]]; 
+                        then    echo "RNA"
+                                if [[ $(grep -w "$x" $meta | awk -F "," '{print $3}') == "single" ]]; 
+                                then    echo "single"
+                                        spades.py --rna -s "$x".norm.fq.gz -t 10 -m 300 -o "$x"_spades
+                                        tar -czvf "$x"_spades.tar.gz "$x"_spades 
+                                        #mv ./"$x"_spades/scaffolds.fasta ./"$x"_scaffolds.fasta
+                                        #pigz -p 30 "$x"_scaffolds.fasta
+                                        rm -r ./"$x"_spades
+                                else    echo "paired"
+                                        spades.py --rna -1 "$x".norm.R1.fq.gz -2 "$x".norm.R2.fq.gz -t 10 -m 300 -o "$x"_spades
+                                        tar -czvf "$x"_spades.tar.gz "$x"_spades
+                                        #mv ./"$x"_spades/scaffolds.fasta ./"$x"_scaffolds.fasta
+                                        #pigz -p 30 "$x"_scaffolds.fasta
+                                        rm -r ./"$x"_spades
+                                fi
+                        else    echo "Skipping RNA pipeline for DNA sample: $x"
+                         # DNA-specific workflow can go here, for example:
+                                if [[ $(grep -w "$x" $meta | awk -F "," '{print $3}') == "single" ]]; 
+                                then    megahit -r "$x".norm.fq.gz -t 10 -m 300 -o "$x"_megahit
+                                else    megahit -1 "$x".norm.R1.fq.gz -2 "$x".norm.R2.fq.gz -t 10 -m 300 -o "$x"_megahit
+                                fi
+                                 tar -czvf "$x"_megahit.tar.gz "$x"_megahit
+                                 rm -r "$x"_megahit
+                        fi
+                        echo "Assembly seems to be done, lets clean up a bit..."
+                        #alright, to save space we will remove the normed reads to make sure we have the space
+                        rm "$x".norm.* &
+                        echo "Everything is completed ⊹₊ ˚‧︵‿₊୨୧₊‿︵‧ ˚ ₊⊹ ++++++++++++++++++___++++++++++++++++++++____+++++++++++++++++++++++++++++++++++___++++++++++++++++++++____+++++++++++++++++++++++++++++++++++___++++++++++++++++++++____+++++++++++++++++"
+                fi
+        else    echo ""$x" failed download (ᵕ—^—)" >> failed_downloads.out
+                echo ""$x" failed download (ᵕ—^—)"
+        fi
+        if [ $( ls | grep -c "tmp") -gt 0 ]; then rm -r *tmp*; fi
+	echo "LOOP DONE %ᵕ‿‿ᵕ%----------------------------------------------------------------------------------------------------------------------------------------------------------"
+done
+
+#This has been failing, and now I'm wondering how exactly it worked in the first place. I am instead going with IsoPull, which is sleeker and should work
+#This script helped rertreive the four that failed last time, anyway
+
+#IsoPull
+#!/bin/bash
+
+# RNA + paired-end only version of your pipeline
+# Fastp → BBNorm → SPAdes RNA
+# 2 threads for fastp & bbnorm, 4 threads for spades
+
+sralist="snsSRAs.csv"
+meta="SnakeNspiderSRAs.csv"
+
+# Confirm SRA list is present
+if [[ $(ls | grep -xc "$sralist") -eq 1 ]]; then
+    echo "Rad, the sra's present."
+else
+    echo "Radn't, SRA list not found in current wd. ):" 
+    exit 1
+fi
+
+echo "Alright, file present. Let's get it started in here."
+
+# Main loop
+for x in $(cat "$sralist")
+do
+    echo "LOOP STARTING ----------------------------------------------------------------------------------------------------------------------------------------------------------"
+    echo "Downloading $x at $(date)"
+
+    export TMPDIR=/Users/maddlab_apollo365/Asherc/Prelim_Data_SNS/temp
+        prefetch $x
+    # Download paired-end files
+    fasterq-dump -p -e 2 --split-files "$x"
+
+    echo "Checking download for $x ..."
+
+    if [[ $(ls | grep -c "${x}_1.fastq") -eq 1 ]] && [[ $(ls | grep -c "${x}_2.fastq") -eq 1 ]]; then
+
+        echo "ALRIGHT FILES ARE THERE AND WE'LL MOVE FORWARD (˶ᵔ ᵕ ᵔ˶) ++++++++++++++++++___++++++++++++++++++++____+++++++++++++++++++++++++++++++++++___++++++++++++++++++++____+++++++++++++++++"
+
+        R1="${x}_1.fastq"
+        R2="${x}_2.fastq"
+
+        echo "Cleaning raw reads with fastp...₊˚⊹♡"
+
+        fastp -i "$R1" -I "$R2" -o "${x}_1_cln.fastq" -O "${x}_2_cln.fastq" --average_qual 25 -q 20 -l 50 -y -Y 30 -g -x -n 2 -c --overrepresentation_analysis --html "${x}.fastp.html" --json "${x}.fastp.json" --thread 2
+
+        echo "!!FastP done, cleaning up raw reads...(*ᴗ͈ˬᴗ͈)"
+
+        rm "$R1" "$R2"
+
+        # Check that cleaned files have data
+        if [[ $(wc -l "${x}_1_cln.fastq" | awk '{print $1}') -eq 0 ]]; then
+            echo "$x failed QC (ᵕ—^—)"
+            echo "$x" >> FailedQC.list
+            rm "${x}_1_cln.fastq" "${x}_2_cln.fastq"
+            continue
+        fi
+
+        echo "Reads look good, normalization time ⋆˙⟡"
+
+        # BBNorm paired-end normalization
+        bbnorm.sh in1="${x}_1_cln.fastq" in2="${x}_2_cln.fastq" out1="${x}.norm.R1.fq.gz" out2="${x}.norm.R2.fq.gz" target=100 min=1 threads=2 -eoom
+
+        echo "!!Normalization done, removing unnormalized cleaned reads..."
+        rm "${x}_1_cln.fastq" "${x}_2_cln.fastq"
+
+        echo "Starting SPAdes RNA assembly..."
+
+        spades.py --rna -1 "${x}.norm.R1.fq.gz" -2 "${x}.norm.R2.fq.gz" -t 4 -m 250 -o "${x}_spades"
+
+        # Tar output and clean
+        tar -czvf "${x}_spades.tar.gz" "${x}_spades"
+        rm -r "${x}_spades"
+
+        echo "Assembly finished!! Cleaning normed reads..."
+        rm "${x}.norm.R1.fq.gz" "${x}.norm.R2.fq.gz"
+
+        echo "Everything is completed for $x ⊹₊ ˚‧︵‿₊୨୧₊‿︵‧ ˚ ₊⊹ "
+    else
+        echo "$x failed download (ᵕ—^—)" | tee -a failed_downloads.out
+    fi
+
+    # Clean temp
+    if [[ $(ls | grep -c "tmp") -gt 0 ]]; then
+        rm -r *tmp*
+    fi
+
+    echo "LOOP DONE %ᵕ‿‿ᵕ%----------------------------------------------------------------------------------------------------------------------------------------------------------"
+
+done
+
+#The same errors occurred. I have no idea what the issue is other than maybe --eoom?
+
+#Nothing I've tried has worked so now I am rerunning in the OG server with OG scripts to see what is going on
+#Seems to be working on capsid
+
+#I had to delete the environment and start over, with the bbmap version that works: 
+conda install -c bioconda -c conda-forge bbmap=39.37
+
+#It's the next day (03-04) and I just checked on the run. 
+    #It's going well. Almost done. It is currently working on the third to last sample. 
+
+#Today is 5-04 and the last one is still assembling. I wonder why it's taking so long..
+    SRR30715312
+#Looks like it stopped updating like two days ago? hmm
+
+#Today 5-05 I am terminating the screen and seeing what worked and if anything failed. It looks like all new dirs populated at least 
+    #Looks like The process just got a lil stuck because the .gz was done today at the time of cancelling
+    #SRR30715312_spades.tar.gz
+
+#Today I decided to just copy in my stuff as it was to save time and just have it as a backup
+
+scp "colston@136.145.140.122:/mnt/colston/BIOL_Venom_Project/*.sh" .
+#repeating for csv and .txt, .gz too why not
+
+scp -r colston@136.145.140.122:/mnt/colston/BIOL_Venom_Project/sra .
+#then sra1
+
+nano Order_of_OG_directory.txt
+#COuldn't hurt to have some info about what order things were last worked on 
+
+mkdir SnakesNspides 
+
+scp "colston@136.145.140.122:/mnt/colston/BIOL_Venom_Project/SnakesNspides/*.gz" .
+
+scp "colston@136.145.140.122:/mnt/colston/BIOL_Venom_Project/SnakesNspides/*.fastq" .
+#and .fasta, then gzip these in OG
+
+mkdir test_GeNomad
+#cd in
+
+scp -r colston@136.145.140.122:/mnt/colston/BIOL_Venom_Project/SnakesNspides/testGeNomad/SRR10216514_output .
+#and the other one
+
+mkdir CheckV #cd in
+
+screen -S DL
+scp -r "colston@136.145.140.122:/mnt/colston/BIOL_Venom_Project/SnakesNspides/CheckV/*_output" .
+#detach
+
+mkdir Pharokka #cd in
+
+screen -S DL2
+scp -r "colston@136.145.140.122:/mnt/colston/BIOL_Venom_Project/SnakesNspides/Pharokka/*_output" .
+exit #Didn't take long at all
+
+screen -r DL
+exit
+
+cd ..
+
+scp -r colston@136.145.140.122:/mnt/colston/BIOL_Venom_Project/SnakesNspides/SRR25747561_spades .
+
+tar -czvf "SRR25747561_spades.tar.gz" "SRR25747561_spades"
+#In OG dir after DL
+
+mkdir GeNomad #cd in
+scp "colston@136.145.140.122:/mnt/colston/BIOL_Venom_Project/SnakesNspides/GeNomad/*.sh" .
+screen -S DL
+scp -r "colston@136.145.140.122:/mnt/colston/BIOL_Venom_Project/SnakesNspides/GeNomad/*_output" .
+
+#color iintermission 
+nano ~/.zshrc
+    #added following:
+    # Enable colors
+    export CLICOLOR=1
+    alias ls='ls --color=auto'
+
+source ~/.zshrc
+#ok back to it
+
+scp -r colston@136.145.140.122:/mnt/colston/BIOL_Venom_Project/SnakesNspides/Mapping .
+
+#Today is 09-04: checkiing on DL. Complete
+cd /Users/maddlab_apollo365/Asherc/Prelim_Data_SNS/SnakesNspides/Mapping
+ls ./*.bam
+./SRR10216514_sample_vs_virus.bam ./SRR21096585_sample_vs_virus.bam
+./SRR10216522_sample_vs_virus.bam ./SRR23348480_sample_vs_virus.bam
+./SRR10216523_sample_vs_virus.bam ./SRR23434845_sample_vs_virus.bam
+./SRR11833482_sample_vs_virus.bam ./SRR25747561_sample_vs_virus.bam
+./SRR12882912_sample_vs_virus.bam ./SRR30050266_sample_vs_virus.bam
+./SRR12915640_sample_vs_virus.bam ./SRR30715312_sample_vs_virus.bam
+./SRR12915695_sample_vs_virus.bam ./SRR30715313_sample_vs_virus.bam
+./SRR14533285_sample_vs_virus.bam ./SRR6051180_sample_vs_virus.bam
+./SRR17250293_sample_vs_virus.bam ./SRR7609626_sample_vs_virus.bam
+./SRR17283879_sample_vs_virus.bam
+
+#Am I missing one? Could it be bc viruses were not recovered from that tetragnathan (iirc)?
+
+#Verifying...
+Species	Common name	SRA Here(Y=yes)
+Agkistrodon piscivorus	Cottonmouth	SRR12915640 Y
+Boiga irregularis	Brown Tree Snake	SRR7609626 Y
+Bothrops asper	Terciopelo/Fer-de-lance, nauyaca, etc	SRR12915695 Y
+Cerastes gasperettii	Arabian horned viper, Desert Horned Viper, and Middle Eastern Horned Viper	SRR30050266 Y
+Crotalus adamanteus	Eastern diamondback rattlesnake	SRR21096585 Y
+Hydrophis curtus	Spine-bellied Sea Snake	SRR12882912 Y
+Oxybelis aeneus	Brown Vine Snake	SRR25747561 Y
+Pseudoboa neuwiedii        	Neuwied's False Boa, Dark-headed Red False Boa, Ratonel, Coal Snake, and Ratonera	SRR30715313 Y
+Pseudonaja textilis	Eastern Brown Snake	SRR23348480 Y
+Rachidelus brazili	Brazilian Bird Snake	SRR30715312 Y
+Stegodyphus dumicola	African social spider	SRR10216514 Y
+Stegodyphus dumicola	African social spider	SRR10216523 Y
+Stegodyphus dumicola	African social spider	SRR10216522 Y
+Parasteatoda tepidariorum	Common House Spider	SRR23434845 Y
+Latrodectus hesperus	Western Black Widow	SRR17250293 Y
+Tetragnatha versicolor	Common Long-jawed Spider or Long-jawed Orb Weaver	SRR6051180 Y
+*   Tetragnatha versicolor	Common Long-jawed Spider or Long-jawed Orb Weaver	SRR6051182 ABSENT #I was right haha
+Hylyphantes graminicola	Dark Hammock-web Spider	SRR14533285 Y
+Trichonephila clavata	Joro-gumo	SRR17283879 Y
+Argiope bruennichi 	Wasp spider	SRR11833482 Y
+
+#My OG notes include the following:
+"#Has K49 and K73 instead of K55, K127. This is the False Coral Snake.
+****    SRR6051180_spades.tar.gz - K49/final_contigs.fasta (92779701)
+ #K33 and K49 instead of K127 and K55. I wonder what happened here? Maybe second assembly didn't work. This is the Common Long-jawed Spider or Long-jawed Orb Weaver
+*       SRR6051182_spades.tar.gz - K49/transcripts.fasta (52779037) and transcripts.fasta (52779037)
+ #This one has K33 and K49 instead of K127 and K55. This is the Common Long-jawed Spider or Long-jawed Orb Weaver
+        SRR7609626_spades.tar.gz - K127/transcripts.fasta (3150288) and transcripts.fasta (3150288) none on K55 "
+
+#I ended up reassembling SRR6051180 using split-files instead of -concat for the first part pulling SRA. Maybe same has to be done for SRR6051182. Let's try that
+
+mkdir tetra_recovery #cd in
+cp Iso..sh . #edit to add correct paths
+nano snsSRAs.csv #add the SRR6051182 ID
+nano SnakeNspiderSRAs.csv # SRR6051182,RNA,paired,Illumina
+screen -S PulAs
+conda activate PulAs
+bash Iso...sh
+
+#Wasn't fully operational w/o stable Python version (3.10):
+conda create -n genomad_env -c conda-forge -c bioconda python=3.10 genomad
+#activate
+
+ cd /Users/maddlab_apollo365/
+ mkdir databases #cd in
+ conda activate genomad_env
+ genomad download-database . 
+ #return to tetra_recovery dir 
+screen -S Single #activate envs
+
+tar -xzvf SRR6051182_spades.tar.gz #untar to access the transcripts.fasta file
+genomad end-to-end --cleanup ./SRR6051182_spades/transcripts.fasta ./GeNomad/SRR6051182_output /Users/maddlab_apollo365/databases/genomad_db --threads 2
+#exit when done
+        #Did not generate summary dir 
+
+#**Tried again by copying over Maddinator2000.sh and editing it to work for our data, then mkdir GeNomad 
+bash Maddinator2000.sh
+    Worked
+#Next the CheckV:
+
+cd /Users/maddlab_apollo365/databases/
+conda create -n CheckV #activate 
+conda install -c conda-forge -c bioconda checkv
+checkv download_database ./
+
+conda activate CheckV       
+checkv end_to_end /Users/maddlab_apollo365/Asherc/Prelim_Data_SNS/SnakesNspides/tetra_recovery/GeNomad/SRR6051182_output/SRR6051182_transcripts_summary/SRR6051182_transcripts_virus.fna ./SRR6051182_checkv_output -d /Users/maddlab_apollo365/databases/checkv-db-v1.5/ -t 2
