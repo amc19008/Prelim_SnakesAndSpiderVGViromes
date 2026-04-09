@@ -1,3 +1,5 @@
+###Note: this log is an abridged version of my raw notes on vscode which are on this Google doc: https://docs.google.com/document/d/1EjN7_XMFf7VV0UEtXrmDU1hTrmA2J45sR9UnE-0Nhik/edit?usp=sharing
+
 ##I began creating a pipeline for pulling raw VG transcrriptome reads from NCBI, QC, and assembly
 
 #First I need a conda env with bbmap, FastP, SPAdes, megahit
