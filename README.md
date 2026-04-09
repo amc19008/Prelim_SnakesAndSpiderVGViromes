@@ -42,8 +42,11 @@ At some point I also tried to download in some raw files for genome assembly, as
 ### Next step: GenomeMAD for first pass annotation
 
 .
+#Genomad env wasn't fully operational w/o stable Python version (3.10), so install as so:
 
-    conda activate genomad
+    conda create -n genomad_env -c conda-forge -c bioconda python=3.10 genomad
+
+    conda activate genomad_env
 Run the Maddinator2000:
 
     bash Maddinator2000.sh
